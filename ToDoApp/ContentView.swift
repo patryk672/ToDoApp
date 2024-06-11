@@ -1,86 +1,134 @@
-//
-//  ContentView.swift
-//  ToDoApp
-//
-//  Created by Patryk on 11/06/2024.
-//
-
 import SwiftUI
 import CoreData
 
 struct ContentView: View {
     @Environment(\.managedObjectContext) private var viewContext
+    @FetchRequest(entity: Category.entity(), sortDescriptors: [])
+    var categories: FetchedResults<Category>
 
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<Item>
+    @State private var showingAddCategory = false
+    @State private var showingEditCategory = false
+    @State private var newCategoryName = ""
+    @State private var selectedCategory: Category?
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
 
     var body: some View {
         NavigationView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
+            VStack {
+                Image("todo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: 80)
+
+                List {
+                    ForEach(categories) { category in
+                        NavigationLink(destination: TaskListView(category: category)) {
+                            Text(category.name ?? "Unnamed")
+                        }
+                        .contextMenu {
+                            Button(action: {
+                                selectedCategory = category
+                                newCategoryName = category.name ?? ""
+                                showingEditCategory = true
+                            }) {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                        }
+                    }
+                    .onDelete(perform: deleteCategories)
+                }
+                .navigationBarTitle("Categories")
+                .navigationBarItems(trailing: Button(action: { showingAddCategory = true }) {
+                    Label("Add Category", systemImage: "plus")
+                })
+            }
+        }
+        .alert(isPresented: $showingAlert) {
+            Alert(title: Text("Invalid Input"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+        }
+        .sheet(isPresented: $showingAddCategory) {
+            VStack {
+                Text("New Category")
+                    .font(.headline)
+                TextField("Category Name", text: $newCategoryName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding()
+                Button("Add") {
+                    if newCategoryName.isEmpty {
+                        alertMessage = "Category name cannot be empty"
+                        showingAlert = true
+                    } else {
+                        addCategory()
+                        showingAddCategory = false
                     }
                 }
-                .onDelete(perform: deleteItems)
+                .padding()
+                Spacer()
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+            .padding()
+        }
+        .sheet(isPresented: $showingEditCategory) {
+            VStack {
+                Text("Edit Category")
+                    .font(.headline)
+                TextField("Category Name", text: $newCategoryName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding()
+                Button("Save") {
+                    if newCategoryName.isEmpty {
+                        alertMessage = "Category name cannot be empty"
+                        showingAlert = true
+                    } else {
+                        editCategory()
+                        showingEditCategory = false
                     }
                 }
+                .padding()
+                Spacer()
             }
-            Text("Select an item")
+            .padding()
         }
     }
 
-    private func addItem() {
+    private func addCategory() {
         withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
+            let newCategory = Category(context: viewContext)
+            newCategory.name = newCategoryName
 
             do {
                 try viewContext.save()
+                newCategoryName = ""
             } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
                 let nsError = error as NSError
                 fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
             }
         }
     }
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
+    private func editCategory() {
+        if let category = selectedCategory {
+            category.name = newCategoryName
             do {
                 try viewContext.save()
+                newCategoryName = ""
             } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
                 let nsError = error as NSError
                 fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
             }
         }
     }
-}
 
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
+    private func deleteCategories(offsets: IndexSet) {
+        withAnimation {
+            offsets.map { categories[$0] }.forEach(viewContext.delete)
 
-#Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+            do {
+                try viewContext.save()
+            } catch {
+                let nsError = error as NSError
+                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+            }
+        }
+    }
 }
